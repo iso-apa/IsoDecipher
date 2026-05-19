@@ -10,6 +10,7 @@ python IsoDecipher/scripts/integrate_samples.py \
     --exp_list data/samples.txt \
     --gcs_dir gs://isodecipher-bam/samples/samples \
     --iso_dir results \
+    -suffix _isoform_count_expanded.csv \
     --out results/master_mosaic_combined.h5ad
 """
 import scanpy as sc
@@ -49,6 +50,8 @@ def main():
                         help="Local directory containing experiment folders (overrides GCS)")
     parser.add_argument("--iso_dir", default="results",
                         help="Directory containing isoform CSVs (results/counts/)")
+    parser.add_argument('--suffix', default='_isoform_count.csv',
+                    help='Isoform count file suffix')
     parser.add_argument("--out", default="results/master_mosaic_combined.h5ad",
                         help="Path for output H5AD")
     args = parser.parse_args()
@@ -100,7 +103,7 @@ def main():
 
         # --- Load Isoform Counts ---
         # Fixed path: results/counts/{exp}_isoform_count.csv
-        iso_path = os.path.join(args.iso_dir, "counts", f"{exp}_isoform_count.csv")
+        iso_path = os.path.join(args.iso_dir, "counts", f"{exp}{args.suffix}")
 
         if os.path.exists(iso_path):
             df_iso = pd.read_csv(iso_path, index_col=0, engine='c')
