@@ -17,8 +17,8 @@ IsoDecipher is part of a suite of tools for single-cell 3' end biology:
 | Tool | Scope | Status |
 |------|-------|--------|
 | **IsoDecipher** | Quantify APA in annotated 3'UTR space | ✅ Available |
-| **[IsoCAPE](https://github.com/rene2718/iso-apa/isocape)** | Detect cryptic & premature polyA sites outside GTF annotation | ✅ Available |
-| **[IsoFormer](https://github.com/rene2718/iso-apa/isoformer)** | Foundation model that learns polyA grammar | 🔬 In development |
+| **[IsoCAPE](https://github.com/iso-apa/isocape)** | Detect cryptic & premature polyA sites outside GTF annotation | ✅ Available |
+| **[IsoFormer](https://github.com/iso-apa/isoformer)** | Foundation model that learns polyA grammar | 🔬 In development |
 
 *Learning the polyadenylation grammar of life, and where cancer breaks the rules.*
 
@@ -331,9 +331,9 @@ IsoDecipher/
 
 ## Future Directions
 
-**[IsoCAPE](https://github.com/rene2718/iso-apa/isocape)** — detects polyadenylation events outside GTF annotation: intronic termination, cryptic terminal exons, and novel 3' extensions from standard RNA-seq BAM files. Identifies clinically actionable isoforms such as AR-V7 (enzalutamide/abiraterone resistance in CRPC) directly from archived datasets, with no specialized assay required. IsoCAPE output is fully compatible with IsoDecipher's AnnData structure for joint analysis.
+**[IsoCAPE](https://github.com/iso-apa/isocape)** *(in development)* — detects polyadenylation events outside GTF annotation: intronic termination, cryptic terminal exons, and novel 3' extensions from standard RNA-seq BAM files. Identifies clinically actionable isoforms such as AR-V7 (enzalutamide/abiraterone resistance in CRPC) directly from archived datasets, with no specialized assay required. IsoCAPE output is fully compatible with IsoDecipher's AnnData structure for joint analysis.
 
-**[IsoFormer](https://github.com/rene2718/iso-apa/isoformer)** *(in development)* — a foundation model that learns the polyadenylation grammar of life, and where cancer breaks the rules. IsoFormer tokenizes raw 3' reads at the polyA signal level (PAS: AATAAA and variants) with single-cell resolution via CB/UB tags — learning APA regulatory grammar directly from BAM files, bypassing GTF annotation entirely. Unlike scGPT or DNABERT, which are bound to fixed gene vocabularies or static DNA sequence, IsoFormer enables de novo discovery of mutation-driven APA shifts and novel cleavage sites that count-matrix pipelines are structurally incapable of observing. Training vocabulary integrates both IsoDecipher annotated sites and IsoCAPE cryptic sites for complete 3' end coverage.
+**[IsoFormer](https://github.com/iso-apa/isoformer)** *(in development)* — a foundation model that learns the polyadenylation grammar of life, and where cancer breaks the rules. IsoFormer tokenizes raw 3' reads at the polyA signal level (PAS: AATAAA and variants) with single-cell resolution via CB/UB tags — learning APA regulatory grammar directly from BAM files, bypassing GTF annotation entirely. Unlike scGPT or DNABERT, which are bound to fixed gene vocabularies or static DNA sequence, IsoFormer enables de novo discovery of mutation-driven APA shifts and novel cleavage sites that count-matrix pipelines are structurally incapable of observing. Training vocabulary integrates both IsoDecipher annotated sites and IsoCAPE cryptic sites for complete 3' end coverage.
 
 ---
 
