@@ -142,7 +142,7 @@ Total IsoDecipher detection rates are consistent with Cellranger GEX across all 
 
 ### 7. Shorter 3' UTR isoforms are associated with higher IgG antibody secretion at single-cell resolution
 
-![Figure 7](results/figures/UTR_vs_IgG_secretion_with_control.png)
+![Figure 7](results/figures/UTR_vs_IgG_secretion_with_control_final.png)
 
 SEC-seq captures secreted IgG on barcoded nanovials at single-cell resolution. Across IgG-isotype plasma cells, the highest secretors cluster around 1,000 bp weighted UTR length while the lowest secretors extend to ~1,500 bp — a clear directional trend linking APA-driven UTR shortening (4) to antibody output. IgM-isotype cells show no trend (r=0.005, p=0.86), confirming isotype-specificity and ruling out technical artifact. The result replicates across two independent experiments.
 
