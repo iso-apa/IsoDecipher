@@ -341,17 +341,9 @@ IsoDecipher/
 
 ---
 
-## Future Directions
-
-**[IsoCAPE](https://github.com/iso-apa/isocape)** *(in development)* — detects polyadenylation events outside GTF annotation: intronic termination, cryptic terminal exons, and novel 3' extensions from standard RNA-seq BAM files. Identifies clinically actionable isoforms such as AR-V7 (enzalutamide/abiraterone resistance in CRPC) directly from archived datasets, with no specialized assay required. IsoCAPE output is fully compatible with IsoDecipher's AnnData structure for joint analysis.
-
-**[IsoFormer](https://github.com/iso-apa/isoformer)** *(in development)* — a foundation model that learns the polyadenylation grammar of life, and where cancer breaks the rules. IsoFormer tokenizes raw 3' reads at the polyA signal level (PAS: AATAAA and variants) with single-cell resolution via CB/UB tags — learning APA regulatory grammar directly from BAM files, bypassing GTF annotation entirely. Unlike scGPT or DNABERT, which are bound to fixed gene vocabularies or static DNA sequence, IsoFormer enables de novo discovery of mutation-driven APA shifts and novel cleavage sites that count-matrix pipelines are structurally incapable of observing. Training vocabulary integrates both IsoDecipher annotated sites and IsoCAPE cryptic sites for complete 3' end coverage.
-
----
-
 ## Gene Panel
 
-IsoDecipher ships with a curated panel of **391 genes** across 22 biological categories, designed for comprehensive oncology-immunology studies including PBMC, B cell differentiation, and cancer datasets (prostate, lung, breast). For discovery-mode analysis, we recommend expanding to HVG + high-expression genes from your data (see Quick Start Step 1).
+IsoDecipher ships with a curated panel of **391 genes** across 22 biological categories, designed for comprehensive oncology-immunology studies including PBMC, B cell differentiation, and cancer datasets (prostate, lung, breast). For discovery-mode analysis, we recommend expanding to **HVG + high-expression genes** from your data (see Quick Start Step 1).
 
 ### Immunology
 - Immunoglobulins (IGHM, IGHG1-4, IGHA1-2, IGHE)
