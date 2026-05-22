@@ -85,6 +85,8 @@ CD59 has 32 annotated transcripts across 14 polyA groups. IsoDecipher consolidat
 | Noise filter | ❌ | ❌ | Partial | ✅ |
 | Biotype filter | ❌ | ❌ | ❌ | ✅ |
 | NMD option | ❌ | ❌ | ❌ | ✅ |
+| Retained intron option | ❌ | ❌ | ❌ | ✅ |
+| UTR source classification | ❌ | ❌ | ❌ | ✅ |
 | Transcript consolidation | ❌ | ❌ | ❌ | ✅ |
 | Scanpy ready | ❌ | ❌ | ❌ | ✅ |
 | IG isoform logic | ❌ | ❌ | ❌ | ✅ |
@@ -96,7 +98,9 @@ IsoDecipher is the only tool that combines GTF-anchored noise suppression, bioty
 
 **IG-aware panel design:** Immunoglobulin heavy chain genes (IGHM, IGHG1-4, IGHA1-2) are annotated with functional labels (G0=Secreted, G1=Membrane) in `panel_features.csv`, enabling direct interpretation of the membrane-to-secreted isoform switch without manual curation. This labeling is automatically applied during panel construction and can be extended to any gene by editing `panel_features.csv` directly. The default gene panel is immunology and oncology focused (391 genes across 22 categories) — users targeting other biological contexts can supply a custom `gene_list.txt` to build a domain-specific panel.
 
-**Adaptive metrics:** PUI (2 isoform groups) or Shannon entropy (3+ groups) are selected automatically per gene. PUI uses log-normalization essential for high-dynamic-range genes such as immunoglobulins. By default NMD transcripts are excluded; use `--include-nmd` to add AS-NMD isoforms (+271 features, 14 genes promoted to PUI/Entropy analysis).
+**Adaptive metrics:** PUI (2 isoform groups) or Shannon entropy (3+ groups) are selected automatically per gene. PUI uses log-normalization essential for high-dynamic-range genes such as immunoglobulins. By default NMD transcripts are excluded; use `--include-nmd` to add AS-NMD isoforms (+271 features, 14 genes promoted to PUI/Entropy analysis). By default retained intron transcripts are also excluded; use `--include-retained-intron` to include their coordinates as additional APA sites — their UTR length is set to `None` and they do not participate in weighted UTR calculations (see `utr_source` field below).
+
+**UTR source classification:** Every panel feature carries a `utr_source` field: `protein_coding` (UTR computed from protein-coding transcripts only — safe for UTR trajectory analysis), `mixed` (cluster contains both protein-coding and non-coding transcripts — protein-coding transcripts dominate UTR calculation), or `non_coding` (retained intron or NMD-only cluster — coordinates are valid APA sites but UTR length is not meaningful). Downstream UTR trajectory analysis should filter on `utr_source in ('protein_coding', 'mixed')` to avoid pollution from intronic termination sites.
 
 **ML-ready:** PUI/Entropy features achieve 64% accuracy (vs 77% full GEX) predicting terminal plasma cell commitment using only 40 APA features — capturing the majority of cell state information in a 42-fold smaller feature space. APA subclustering of the GEX-defined plasma cell blob resolves 5 distinct subpopulations — including a novel interferon-stimulated plasma cell state — that are completely indistinguishable by transcriptome analysis alone. Combined with SEC-seq, IsoDecipher directly links APA-driven UTR shortening to antibody secretion output at single-cell resolution (r=−0.100, p=2.11×10⁻¹², replicated across two independent experiments).
 
@@ -180,7 +184,7 @@ mamba install -c conda-forge -c bioconda snakemake -y
 
 ### Step 1: Build isoform feature panel
 ```bash
-# Default panel (NMD excluded)
+# Default panel (NMD excluded, retained intron excluded)
 python IsoDecipher/scripts/build_panel_features.py \
     --gtf data/Homo_sapiens.GRCh38.115.gtf \
     --genes data/gene_list.txt \
@@ -194,7 +198,21 @@ python IsoDecipher/scripts/build_panel_features.py \
     --out results/panel_features.csv \
     --tolerance 10 \
     --include-nmd
+
+# Include retained intron transcripts (coordinates only, UTR=None)
+# Recommended for cancer datasets with dysregulated splicing
+python IsoDecipher/scripts/build_panel_features.py \
+    --gtf data/Homo_sapiens.GRCh38.115.gtf \
+    --genes data/gene_list.txt \
+    --out results/panel_features.csv \
+    --tolerance 10 \
+    --include-nmd \
+    --include-retained-intron
 ```
+
+**`--tolerance`** controls the clustering window for merging nearby transcript ends (default: 10bp). Increase to 20bp for noisier datasets or when reads show higher positional scatter.
+
+**`utr_source` field in output:** Each panel feature is tagged `protein_coding`, `mixed`, or `non_coding`. Filter on `utr_source in ('protein_coding', 'mixed')` for UTR trajectory analysis to avoid pollution from retained intron sites.
 
 **Expanding the gene panel (recommended for discovery-mode analysis):**
 
@@ -246,13 +264,21 @@ python IsoDecipher/scripts/assign_reads.py \
     --out results/counts/exp93_isoform_count.csv
 ```
 
+**Flexible barcode format:** `--barcodes` accepts TSV, CSV, or gzipped files. The barcode column is auto-detected — both single-column (`BARCODE-1`) and two-column formats (`GRCh38,BARCODE-1`) from Cell Ranger are handled automatically. Override with `--barcode-col` and `--barcode-sep` if needed.
+
 ### Step 3: Run full pipeline with Snakemake
 ```bash
-# Default (NMD excluded)
+# Default (NMD excluded, retained intron excluded, tolerance=10)
 snakemake --cores 4
 
 # Include NMD transcripts
 snakemake --cores 4 --config include_nmd=True
+
+# Include retained intron + NMD (recommended for cancer datasets)
+snakemake --cores 4 --config include_nmd=True include_retained_intron=True
+
+# Custom tolerance
+snakemake --cores 4 --config include_nmd=True tolerance=20
 ```
 
 ### Step 4: Downstream analysis (Python)
@@ -283,9 +309,15 @@ GTF annotation + gene panel (391 genes, or expanded HVG+high-expr)
             ▼
      Panel Builder + Annotation Filter
      (--include-nmd flag for AS-NMD isoforms)
+     (--include-retained-intron for cancer datasets)
+     (--tolerance controls clustering window, default 10bp)
             │
             ▼
-   panel_features.csv (1,808 features with NMD / 1,537 without, 367 genes)
+   panel_features.csv
+   ├── protein_coding groups → UTR trajectory safe
+   ├── mixed groups          → UTR from protein_coding transcripts
+   └── non_coding groups     → coordinates only, UTR=None
+   (1,808 features with NMD / 1,537 without, 367 genes — B cell panel)
             │
             ▼
   Cell Ranger BAM × N samples
@@ -293,6 +325,7 @@ GTF annotation + gene panel (391 genes, or expanded HVG+high-expr)
             ▼
     IsoDecipher Read Assignment
     (strand-aware, UMI-deduplicated, ±200bp window)
+    (flexible barcode format: TSV/CSV/gz, auto-detected)
             │
             ▼
   Isoform Count Matrix (cells × polyA_groups)
@@ -303,6 +336,7 @@ GTF annotation + gene panel (391 genes, or expanded HVG+high-expr)
             ▼
   PUI / Entropy Analysis
   ├── APA Trajectory (pseudotime)
+  │   └── filter utr_source in ('protein_coding', 'mixed')
   ├── Piecewise Linear Changepoint Detection
   ├── Waddington Landscape
   ├── Isoform-defined DEG staging
