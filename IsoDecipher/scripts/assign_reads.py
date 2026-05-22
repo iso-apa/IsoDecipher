@@ -17,6 +17,10 @@ def parse_args():
                         help="0-based column index for barcodes. Auto-detected if not set.")
     parser.add_argument("--barcode-sep", default=None,
                         help="Delimiter. Auto-detected from extension if not set.")
+    parser.add_argument("--chroms", default=None,
+                        help="Comma-separated chromosomes to include. "
+                             "Default: standard chr1-22,chrX,chrY,chrM only. "
+                             "Use 'all' to include all contigs.")
     return parser.parse_args()
 
 
@@ -72,10 +76,40 @@ def load_barcodes(barcodes_path, barcode_col=None, sep=None):
 def main():
     args = parse_args()
     panel = pd.read_csv(args.panel)
+
+    # Standard chromosomes filter
+    STANDARD_CHROMS = set(
+        [f"chr{i}" for i in range(1, 23)] +
+        ["chrX", "chrY", "chrM"] +
+        [str(i) for i in range(1, 23)] +
+        ["X", "Y", "MT"]
+    )
+
+    if args.chroms == 'all':
+        allowed_chroms = None  # no filter
+        print("[filter] Chromosome filter: OFF (all contigs included)")
+    elif args.chroms:
+        allowed_chroms = set(c.strip() for c in args.chroms.split(','))
+        print(f"[filter] Chromosome filter: {len(allowed_chroms)} user-specified chroms")
+    else:
+        allowed_chroms = STANDARD_CHROMS
+        print("[filter] Chromosome filter: standard chr1-22,chrX,chrY,chrM "
+              "(use --chroms all to include contigs)")
+
     targets = defaultdict(list)
+    skipped_chroms = set()
 
     for row in panel.itertuples(index=False):
-        targets[row.chrom].append({
+        chrom = row.chrom
+        if allowed_chroms is not None and chrom not in allowed_chroms:
+            # try with/without chr prefix
+            alt = chrom.lstrip('chr') if chrom.startswith('chr') else f"chr{chrom}"
+            if alt in allowed_chroms:
+                chrom = alt
+            else:
+                skipped_chroms.add(row.chrom)
+                continue
+        targets[chrom].append({
             'gene':        row.gene,
             'pos':         row.rep_coord,
             'strand':      row.strand,
@@ -84,6 +118,10 @@ def main():
             'spliced_utr': row.avg_spliced_utr,
             'genomic_utr': row.avg_genomic_utr,
         })
+
+    if skipped_chroms:
+        print(f"[filter] Skipped {len(skipped_chroms)} non-standard contigs: "
+              f"{', '.join(sorted(skipped_chroms)[:5])}{'...' if len(skipped_chroms) > 5 else ''}")
 
     # Load barcodes with flexible loader
     valid_barcodes = None
@@ -133,7 +171,11 @@ def main():
                 if dist <= window:
                     ub      = read.get_tag("UB")
                     umi_key = (cb, ub)
-                    feature = f"{site['gene']}_G{site['group']}_{site['label']}"
+                    label   = site['label']
+                    if not label or label == 'N/A' or str(label) == 'nan':
+                        feature = f"{site['gene']}_G{site['group']}"
+                    else:
+                        feature = f"{site['gene']}_G{site['group']}_{label}"
 
                     if umi_key not in umi_best_match or dist < umi_best_match[umi_key][1]:
                         umi_best_match[umi_key] = (feature, dist)
