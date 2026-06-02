@@ -24,7 +24,7 @@ IsoDecipher is the open-source entry point to **IsoMatrix**, a dual-licensed eco
 
 *Learning the polyadenylation grammar of life — and where cancer and autoimmunity breaks the rules.*
 
-```
+
 
 ---
 
