@@ -1,10 +1,19 @@
+# ==============================================================================
+# Copyright (c) 2026 IsoMatrix Suite. All rights reserved.
+# 
+# IsoDecipher is dual-licensed:
+# 1. For academic and non-commercial use, it is licensed under the AGPLv3.
+# 2. For commercial and enterprise use, a Commercial License is required.
+# 
+# See the LICENSE file in the project root for more details.
+# ==============================================================================
+
 import pysam
 import pandas as pd
 import gzip
 from collections import defaultdict
 import argparse
 import os
-
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Assign reads to isoforms per sample")
@@ -21,6 +30,9 @@ def parse_args():
                         help="Comma-separated chromosomes to include. "
                              "Default: standard chr1-22,chrX,chrY,chrM only. "
                              "Use 'all' to include all contigs.")
+    parser.add_argument("--window", type=int, default=350,
+                        help="Upstream read scatter window around PA site. "
+                             "Default: 350 (based on 10x max insert 600bp - backbone 200bp - read2 90bp + buffer)")
     return parser.parse_args()
 
 
@@ -133,7 +145,9 @@ def main():
         )
 
     bam    = pysam.AlignmentFile(args.bam, "rb")
-    window = 200
+    
+    # Use dynamic window from arguments
+    window = args.window
 
     counts        = defaultdict(set)
     umi_best_match = {}
@@ -151,7 +165,14 @@ def main():
               f"Total unique UMIs captured so far: {len(umi_best_match)}")
 
         for site in sites:
-            for read in bam.fetch(current_chrom, site['pos'] - window, site['pos'] + window):
+            # Fetch upstream only — downstream reads belong to neighbor genes
+            if site['strand'] == '+':
+                fetch_start = max(0, site['pos'] - window)
+                fetch_end   = site['pos']
+            else:
+                fetch_start = site['pos']
+                fetch_end   = site['pos'] + window
+            for read in bam.fetch(current_chrom, fetch_start, fetch_end):
                 if not (read.has_tag("CB") and read.has_tag("UB")):
                     continue
                 if (site["strand"] == "+" and read.is_reverse) or \

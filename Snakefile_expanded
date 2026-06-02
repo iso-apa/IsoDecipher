@@ -12,26 +12,12 @@ GENES = "data/gene_list_expanded.txt"
 INCLUDE_NMD = config.get("include_nmd", False)
 
 # Auto-detect samples from GCS
-result = subprocess.run(
-    ["gsutil", "ls", "gs://isodecipher-bam/samples/samples/"],
-    capture_output=True, text=True
-)
-SAMPLES = [
-    line.strip().rstrip('/').split('/')[-1]
-    for line in result.stdout.splitlines()
-    if line.strip().endswith('/')
-    and not line.strip().endswith('samples/')
-]
+SAMPLES = ['exp93', 'exp97', 'exp105', 'exp106']
 print(f"[IsoDecipher] Found samples: {SAMPLES}")
-
-
 
 rule all:
     input:
-        "results/panel_features_expanded.csv",
-        expand("results/counts/{sample}_isoform_count_expanded.csv", sample=SAMPLES),
-        "results/master_mosaic_combined_expanded.h5ad" 
-
+        "results/master_mosaic_combined_expanded_350.h5ad" 
 
 rule build_panel:
     input:
@@ -53,39 +39,31 @@ rule build_panel:
             {params.nmd_flag} \
             2> {log}
         """
+
 rule assign_reads:
     input:
         panel = "results/panel_features_expanded.csv",
-        barcodes = "data/samples/{sample}/filtered_feature_bc_matrix/barcodes.tsv.gz"
-
+        barcodes = "data/samples/Cheng/{sample}/filtered_feature_bc_matrix/barcodes.tsv.gz"
     output:
         "results/counts/{sample}_isoform_count_expanded.csv"
     log:
         "logs/{sample}_assign_reads.log"
     shell:
         """
-        gsutil -o "GSUtil:parallel_process_count=1" cp \
-            gs://isodecipher-bam/samples/samples/{wildcards.sample}/possorted_genome_bam.bam \
-            /tmp/{wildcards.sample}.bam
-        
-        gsutil -o "GSUtil:parallel_process_count=1" cp \
-            gs://isodecipher-bam/samples/samples/{wildcards.sample}/possorted_genome_bam.bam.bai \
-            /tmp/{wildcards.sample}.bam.bai
-        
         python IsoDecipher/scripts/assign_reads.py \
-            --bam /tmp/{wildcards.sample}.bam \
+            --bam /Volumes/Lexar/bam/{wildcards.sample}_possorted_genome_bam.bam \
             --panel {input.panel} \
             --barcodes {input.barcodes} \
             --out {output} \
+            --window 350 \
             2> {log}
-        
-        rm /tmp/{wildcards.sample}.bam /tmp/{wildcards.sample}.bam.bai
         """
+
 rule integrate:
     input:
         expand("results/counts/{sample}_isoform_count_expanded.csv", sample=SAMPLES)
     output:
-        "results/master_mosaic_combined_expanded.h5ad"
+        "results/master_mosaic_combined_expanded_350.h5ad"
     log:
         "logs/integrate.log"
     params:
@@ -94,8 +72,8 @@ rule integrate:
         """
         python IsoDecipher/scripts/integrate_samples.py \
             --samples {params.samples} \
-            --gcs_dir gs://isodecipher-bam/samples/samples \
-            --iso_dir results \
+            --data_dir data/samples/Cheng \
+            --iso_dir results/counts \
             --suffix _isoform_count_expanded.csv \
             --out {output} \
             2> {log}

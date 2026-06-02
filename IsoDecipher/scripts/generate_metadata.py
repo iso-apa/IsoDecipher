@@ -1,3 +1,14 @@
+# ==============================================================================
+# Copyright (c) 2026 IsoMatrix Suite. All rights reserved.
+# 
+# IsoDecipher is dual-licensed:
+# 1. For academic and non-commercial use, it is licensed under the AGPLv3.
+# 2. For commercial and enterprise use, a Commercial License is required.
+# 
+# See the LICENSE file in the project root for more details.
+# ==============================================================================
+
+
 import pandas as pd
 
 # Load the master panel

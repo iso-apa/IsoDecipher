@@ -1,0 +1,95 @@
+import os
+
+os.makedirs("logs", exist_ok=True)
+os.makedirs("results/counts", exist_ok=True)
+
+GTF    = "data/Homo_sapiens.GRCh38.115.gtf"
+GENES  = "data/gene_list_IDC.txt"
+
+INCLUDE_NMD = config.get("include_nmd", False)
+INCLUDE_RI  = config.get("include_retained_intron", False)
+TOLERANCE   = config.get("tolerance", 10)
+
+LOCAL_BAMS = {
+    "IDC": {
+        "bam":      "/Users/renegibson/Downloads/Breast_Cancer_3p_possorted_genome_bam.bam",
+        "barcodes": "/Users/renegibson/Downloads/IDC_barcodes.csv",
+    }
+}
+
+SAMPLES = list(LOCAL_BAMS.keys())
+print(f"[IsoDecipher] Found samples: {SAMPLES}")
+
+
+rule all:
+    input:
+        "results/panel_features_IDC.csv",
+        expand("results/counts/{sample}_isoform_count_IDC.csv", sample=SAMPLES),
+        "results/master_mosaic_combined_IDC.h5ad"
+
+
+rule build_panel:
+    input:
+        gtf   = GTF,
+        genes = GENES
+    output:
+        panel = "results/panel_features_IDC.csv"
+    log:
+        "logs/build_panel_IDC.log"
+    params:
+        nmd_flag  = "--include-nmd" if INCLUDE_NMD else "",
+        ri_flag   = "--include-retained-intron" if INCLUDE_RI else "",
+        tolerance = TOLERANCE
+    shell:
+        """
+        python IsoDecipher/scripts/build_panel_features.py \
+            --gtf {input.gtf} \
+            --genes {input.genes} \
+            --out {output.panel} \
+            --tolerance {params.tolerance} \
+            {params.nmd_flag} \
+            {params.ri_flag} \
+            2> {log}
+        """
+
+
+rule assign_reads:
+    input:
+        panel = "results/panel_features_IDC.csv",
+    output:
+        "results/counts/{sample}_isoform_count_IDC.csv"
+    log:
+        "logs/{sample}_assign_reads_IDC.log"
+    params:
+        bam      = lambda wildcards: LOCAL_BAMS[wildcards.sample]["bam"],
+        barcodes = lambda wildcards: LOCAL_BAMS[wildcards.sample]["barcodes"],
+    shell:
+        """
+        python IsoDecipher/scripts/assign_reads.py \
+            --bam {params.bam} \
+            --panel {input.panel} \
+            --barcodes {params.barcodes} \
+            --out {output} \
+            2> {log}
+        """
+
+
+rule integrate:
+    input:
+        expand("results/counts/{sample}_isoform_count_IDC.csv", sample=SAMPLES)
+    output:
+        "results/master_mosaic_combined_IDC.h5ad"
+    log:
+        "logs/integrate_IDC.log"
+    params:
+        samples = lambda wildcards: " ".join(SAMPLES)
+    shell:
+        """
+        python IsoDecipher/scripts/integrate_samples.py \
+            --samples {params.samples} \
+            --data_dir data/samples \
+            --iso_dir results \
+            --suffix _isoform_count_IDC.csv \
+            --out {output} \
+            2> {log}
+        """

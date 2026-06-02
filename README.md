@@ -1,37 +1,29 @@
 # IsoDecipher
 
-**IsoDecipher** is a targeted isoform quantification tool designed for **3' single-cell RNA-seq (scRNA-seq)** data.
+**IsoDecipher** is the open-source foundational module of the [IsoMatrix Suite](https://github.com/iso-apa), designed for targeted isoform quantification from **3' single-cell RNA-seq (scRNA-seq)** data.
 
 It recovers hidden biological signals—such as **Alternative Polyadenylation (APA)** and **B-cell antibody isoform switching**—by re-interpreting **3' read distributions** that standard pipelines collapse into gene-level counts.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue)]()
 [![Compatible with Cell Ranger](https://img.shields.io/badge/compatible-CellRanger%20BAMs-green)]()
 
 ---
 
-## Ecosystem
+## The IsoMatrix Ecosystem
 
-IsoDecipher is part of a suite of tools for single-cell 3' end biology:
+IsoDecipher is the open-source entry point to **IsoMatrix**, a dual-licensed ecosystem for single-cell 3' end biology. While IsoDecipher serves as the industry standard for GTF-anchored quantification, our advanced discovery engines for unannotated peak detection and machine learning classification are available under a commercial license for enterprise use.
 
-| Tool | Scope | Status |
-|------|-------|--------|
-| **IsoDecipher** | APA quantification from 3' scRNA-seq BAMs — GTF-anchored, scanpy-ready | ✅ Active |
-| **[IsoCAPE](https://github.com/iso-apa/isocape)** | Cryptic & premature polyadenylation detection — AR-V7 and beyond | 🔧 In development |
-| **[IsoFormer](https://github.com/iso-apa/isoformer)** | Foundation model for polyadenylation grammar at single-cell resolution | 🔧 In development |
+| Module | Scope | License | Status |
+|------|-------|--------|--------|
+| **IsoDecipher** | APA quantification from 3' scRNA-seq BAMs — GTF-anchored, scanpy-ready | Open-Source (AGPLv3) | ✅ Active |
+| **IsoCAPE** | Cryptic & premature polyadenylation detection (CE, Alu-driven, intergenic) | Proprietary / Commercial | 🔒 Closed-Source |
+| **IsoPrime** | Internal priming probability scorer and sequence artifact filter | Proprietary / Commercial | 🔒 Closed-Source |
+| **IsoScore** | ML-driven biological significance classifier (FWHM, Skewness, KL Divergence) | Proprietary / Commercial | 🔒 Closed-Source |
+| **IsoFormer** | Foundation model for polyadenylation grammar at single-cell resolution | Proprietary / Commercial | 🔒 Closed-Source |
 
-*Learning the polyadenylation grammar of life, and where cancer breaks the rules.*
+*Learning the polyadenylation grammar of life — and where cancer and autoimmunity breaks the rules.*
 
-**IsoDecipher** and **IsoCAPE** are designed to complement each other — IsoDecipher covers the known annotated APA landscape, IsoCAPE covers what the GTF misses (intronic termination, cryptic exons, AR-V7). Their outputs share the same AnnData structure and can be concatenated for a complete 3' end landscape:
-
-```python
-import anndata as ad
-import scanpy as sc
-
-apa     = sc.read_h5ad("isodecipher_output.h5ad")   # annotated APA
-cryptic = sc.read_h5ad("isocape_output.h5ad")        # cryptic sites
-
-combined = ad.concat([apa, cryptic], axis=1)
 ```
 
 ---
@@ -116,7 +108,7 @@ IsoDecipher recovers membrane (G1) and secreted (G0) isoforms of immunoglobulin 
 ### 2. Quantitative mapping of IgH membrane isoform dynamics
 ![Figure 2](results/figures/G1_piecewise_fit.png)
 
-Piecewise linear modeling identifies conserved changepoints: G1 decline initiates at CP1 (~0.72–0.77) and completes at CP2 (~0.83–0.86), defining a narrow ~0.09–0.13 pseudotime window consistent across all isotypes. Bimodality coefficients exceed the bifurcation threshold at CP1 (BC > 0.555: IGHM 0.624, IGHG1 0.564, IGHG3 0.670, IGHA1 0.565), confirming a bistable commitment event rather than a continuous gradient.
+Piecewise linear modeling identifies conserved changepoints: G1 decline initiates at CP1 (~0.72–0.77) and completes at CP2 (~0.83–0.87), defining a narrow ~0.1 pseudotime window consistent across all isotypes. Bimodality coefficients exceed the bifurcation threshold at CP1 (BC > 0.555: IGHM 0.62, IGHG1 0.57, IGHG3 0.64, IGHA1 0.57), confirming a bistable commitment event rather than a continuous gradient.
 
 ### 3. TENT5C is co-induced with the IgH secreted isoform at plasma cell commitment
 ![Figure 3](results/figures/TENT5C_G0_horizontal.png)
@@ -129,13 +121,13 @@ TENT5C (FAM46C) is recurrently mutated in multiple myeloma (~20% of cases); its 
 
 ![Figure 4](results/figures/UTR_length_waddington_entropy.png)
 
-Expression-weighted mean 3' UTR length shortens from 1,273 bp to 1,099 bp at CP1 (p < 10⁻³⁰⁰). This is not uniform shortening — the 5th percentile changes minimally (917→857 bp, Δ=60 bp) while the 95th percentile collapses (1,747→1,383 bp, Δ=364 bp), indicating selective elimination of long-UTR states. A transient lengthening peak prior to CP1 reflects activated B cells upregulating distal polyA sites during proliferation and class switch recombination. Waddington landscape and APA entropy analyses independently corroborate progressive isoform repertoire restriction at terminal commitment.
+Expression-weighted mean 3' UTR length shortens from 1,235 bp to 1,094 bp at CP1 (p < 10⁻³⁰⁰). This is not uniform shortening — the 5th percentile changes minimally (917→857 bp, Δ=60 bp) while the 95th percentile collapses (1,747→1,383 bp, Δ=364 bp), indicating selective elimination of long-UTR states. A transient lengthening peak prior to CP1 reflects activated B cells upregulating distal polyA sites during proliferation and class switch recombination. Waddington landscape and APA entropy analyses independently corroborate progressive isoform repertoire restriction at terminal commitment.
 
 ### 5. CD59 and TMBIM6 undergo progressive APA switching during blast-to-plasma cell maturation
 
 ![Figure 5](results/figures/UTR_gene_validation.png)
 
-CD59 (14 isoforms, Δtotal=−699 bp) and TMBIM6 (13 isoforms, Δtotal=−600 bp) show genuine APA switching confirmed by expressing-cell trajectories and leiden cluster composition. Both are absent in activated B cells (pct=0.083 and 0.031) and switch on in blast/plasmablast clusters — their UTR shortening tracks the plasmablast-to-plasma cell axis, not the activated B cell program. B2M (Δtotal=−7 bp) serves as negative control.
+CD59 (14 isoforms, Δtotal=−698 bp) and TMBIM6 (13 isoforms, Δtotal=−603 bp) show genuine APA switching confirmed by expressing-cell trajectories and leiden cluster composition. Both are absent in activated B cells and switch on in blast/plasmablast clusters — their UTR shortening tracks the plasmablast-to-plasma cell axis, not the activated B cell program. B2M (Δtotal=−7 bp) serves as negative control.
 
 ### 6. Isoform-level resolution reveals CD59 and TMBIM6 switching dynamics invisible to total GEX
 
@@ -149,7 +141,7 @@ Total IsoDecipher detection rates are consistent with Cellranger GEX across all 
 
 ![Figure 7](results/figures/UTR_vs_IgG_secretion_with_control_final.png)
 
-SEC-seq captures secreted IgG on barcoded nanovials at single-cell resolution. Across IgG-isotype plasma cells, the highest secretors cluster around 1,000 bp weighted UTR length while the lowest secretors extend to ~1,500 bp — a clear directional trend linking APA-driven UTR shortening (4) to antibody output. IgM-isotype cells show no trend (r=0.005, p=0.86), confirming isotype-specificity and ruling out technical artifact. The result replicates across two independent experiments.
+SEC-seq captures secreted IgG on barcoded nanovials at single-cell resolution. Across IgG-isotype plasma cells, the highest secretors cluster around 1,000 bp weighted UTR length while the lowest secretors extend to ~1,500 bp — a clear directional trend linking APA-driven UTR shortening (Key finding 4) to antibody output. IgM-isotype cells show no trend (r=0.003, p=0.9), confirming isotype-specificity and ruling out technical artifact. The result replicates across two independent experiments.
 
 This is consistent with UTR length-dependent regulation of mRNA stability and translational efficiency: shorter 3' UTRs reduce miRNA binding site density and destabilizing AU-rich elements, increasing mRNA half-life. The genome-wide UTR shortening at commitment is therefore not merely a transcriptional signature — it has a measurable functional consequence on the quantity of antibody each cell secretes. These results provide single-cell functional validation of secretion-coupled APA (SCAP), a mechanism described by Cheng et al. (2020, *Nature Communications*) in bulk trophoblast and B cell differentiation, here resolved at single-cell resolution with matched protein secretion readout via SEC-seq.
 
@@ -263,9 +255,12 @@ python IsoDecipher/scripts/assign_reads.py \
     --panel results/panel_features.csv \
     --barcodes data/samples/exp93/filtered_feature_bc_matrix/barcodes.tsv.gz \
     --out results/counts/exp93_isoform_count.csv
+    --window 350 
 ```
 
-**Flexible barcode format:** `--barcodes` accepts TSV, CSV, or gzipped files. The barcode column is auto-detected — both single-column (`BARCODE-1`) and two-column formats (`GRCh38,BARCODE-1`) from Cell Ranger are handled automatically. Override with `--barcode-col` and `--barcode-sep` if needed.
+**Smart capture window**: The --window parameter (default: 350) defines the strict upstream scatter boundary around the PolyA site. This 350bp limit is custom-calibrated for 10x Genomics 3' GEX library anatomy (accounting for max insert size minus backbone and Read 2 lengths), ensuring that reads are precisely assigned to the correct isoform without bleeding into downstream neighboring genes.
+
+**Flexible barcode format**: --barcodes accepts TSV, CSV, or gzipped files. The barcode column is auto-detected — both single-column (BARCODE-1) and two-column formats (GRCh38,BARCODE-1) from Cell Ranger are handled automatically. Override with --barcode-col and --barcode-sep if needed.
 
 ### Step 3: Run full pipeline with Snakemake
 ```bash
@@ -296,9 +291,9 @@ See `notebooks/01_quickstart.ipynb`
 | exp105 | Day 13 | CD40L+CpG+IL21 | 7,751 | SECseq |
 | exp106 | Day 13 | CD40L+CpG+IL21 | 3,543 | SECseq |
 
-**Final dataset**: 21,670 cells after QC (MT% <15%, 500–5500 genes)
+**Final dataset**: 23,151 cells
 
-**Features**: GEX 36,691 + Isoform 1,808 (with NMD) + ADT 17
+**Features**: GEX 36,691 + Isoform 19,134 (with NMD) + ADT 17
 
 ---
 
@@ -318,14 +313,13 @@ GTF annotation + gene panel (391 genes, or expanded HVG+high-expr)
    ├── protein_coding groups → UTR trajectory safe
    ├── mixed groups          → UTR from protein_coding transcripts
    └── non_coding groups     → coordinates only, UTR=None
-   (1,808 features with NMD / 1,537 without, 367 genes — B cell panel)
             │
             ▼
   Cell Ranger BAM × N samples
             │
             ▼
     IsoDecipher Read Assignment
-    (strand-aware, UMI-deduplicated, ±200bp window)
+    (strand-aware, UMI-deduplicated, upstream 350bp window)
     (flexible barcode format: TSV/CSV/gz, auto-detected)
             │
             ▼
@@ -421,7 +415,11 @@ ACTB, GAPDH, B2M, UBC, PPIB, NDUFA4, COX5A
 
 ---
 
-## License
+## ⚖️ License & Commercial Use
 
-MIT License
-© 2026 Rene Yu-Hong Cheng
+IsoDecipher is part of the **IsoMatrix Suite** and is open-source under the [AGPLv3 License](LICENSE) for academic and non-commercial use.
+
+For commercial use, SaaS integration, or access to our proprietary discovery engines (such as **IsoCAPE**, **IsoScore**, and **IsoFormer**), please refer to the [IsoMatrix Commercial Licensing details](https://github.com/iso-apa) or contact the author (rene271828@gmail.com).
+
+---
+*Built by Rene Yu-Hong Cheng | IsoMatrix Suite*
