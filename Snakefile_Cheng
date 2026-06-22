@@ -5,25 +5,17 @@ os.makedirs("logs", exist_ok=True)
 os.makedirs("results/panel", exist_ok=True)
 os.makedirs("results/counts", exist_ok=True)
 os.makedirs("results/h5ad", exist_ok=True)
-os.makedirs("results/gene_lists", exist_ok=True)
+os.makedirs("results/insert_size/Cheng", exist_ok=True)
 
 GTF     = "/Volumes/Lexar/reference/hg38/Homo_sapiens.GRCh38.115.gtf"
 GENES   = "results/gene_lists/gene_list_Cheng.txt"
 
-# Optional: include NMD transcripts in panel
-# Override with: snakemake --config include_nmd=True
 INCLUDE_NMD = config.get("include_nmd", False)
+TOLERANCE   = config.get("tolerance", 125)
 
-# Tolerance for polyA site grouping
-# 20bp = P5 of empirical insert size distribution (validated from exp105)
-# Reads scatter min ~20bp from polyA → sites < 20bp apart = same site
-TOLERANCE = config.get("tolerance", 20)
-
-# Auto-detect samples from GCS
-SAMPLES = ['exp93', 'exp97', 'exp105', 'exp106']
+SAMPLES = ['exp97', 'exp105', 'exp106']  # exp93 excluded (unpublished)
 print(f"[IsoDecipher] Found samples: {SAMPLES}")
 
-# Matrix directories for each sample
 MATRIX_DIRS = {
     s: f"data/samples/Cheng/{s}/filtered_feature_bc_matrix"
     for s in SAMPLES
@@ -31,7 +23,7 @@ MATRIX_DIRS = {
 
 rule all:
     input:
-        "results/h5ad/master_mosaic_combined_expanded_Cheng_420.h5ad"
+        "results/h5ad/master_mosaic_combined_Cheng_PanelKDE.h5ad"
 
 rule make_gene_list:
     input:
@@ -45,18 +37,16 @@ rule make_gene_list:
         "logs/make_gene_list.log"
     run:
         import subprocess, os
-        # Run make_gene_list for each sample, then take union
         tmp_lists = []
         for sample in SAMPLES:
             tmp = f"results/gene_lists/gene_list_{sample}.txt"
             subprocess.run([
                 "python", "IsoDecipher/scripts/make_gene_list.py",
-                "--matrix", f"data/samples/Cheng/{sample}/filtered_feature_bc_matrix",
+                "--matrix", f"/Volumes/Lexar/Cheng/{sample}/filtered_feature_bc_matrix",
                 "--out", tmp,
                 "--min-cells", "3"
             ], check=True)
             tmp_lists.append(tmp)
-        # Union of all gene lists
         all_genes = set()
         for f in tmp_lists:
             with open(f) as fh:
@@ -87,13 +77,32 @@ rule build_panel:
             2> {log}
         """
 
+rule validate_insert_size:
+    input:
+        bam   = "/Volumes/Lexar/Cheng/{sample}_possorted_genome_bam.bam",
+        panel = "results/panel/panel_features_Cheng.csv"  # 改回 panel
+    output:
+        plot   = "results/insert_size/Cheng/{sample}_insert_size_dist.png",
+        lookup = "results/insert_size/Cheng/{sample}_insert_size_dist_lookup.json"
+    log:
+        "logs/{sample}_validate_insert_size.log"
+    shell:
+        """
+        python IsoDecipher/scripts/validate_insert_size.py \
+            --bam     {input.bam} \
+            --panel   {input.panel} \
+            --out     {output.plot} \
+            --n-reads 200000 \
+            2> {log}
+        """
+
 rule assign_reads:
     input:
         panel    = "results/panel/panel_features_Cheng.csv",
         barcodes = "/Volumes/Lexar/Cheng/{sample}/filtered_feature_bc_matrix/barcodes.tsv.gz",
-        lookup   = "reference/insert_size_lookup_10x_3p_v3.json"
+        lookup   = "results/insert_size/Cheng/{sample}_insert_size_dist_lookup.json"  # panel KDE
     output:
-        "results/counts/{sample}_isoform_count_expanded.csv"
+        "results/counts/{sample}_isoform_count_Cheng.csv"
     log:
         "logs/{sample}_assign_reads.log"
     shell:
@@ -109,9 +118,10 @@ rule assign_reads:
 
 rule integrate:
     input:
-        expand("results/counts/{sample}_isoform_count_Cheng.csv", sample=SAMPLES)
+        expand("results/counts/{sample}_isoform_count_Cheng.csv", sample=SAMPLES),
+        panel = "results/panel/panel_features_Cheng.csv"
     output:
-        "results/h5ad/master_mosaic_combined_expanded_Cheng_420.h5ad"
+        "results/h5ad/master_mosaic_combined_Cheng_PanelKDE.h5ad"
     log:
         "logs/integrate.log"
     params:
@@ -120,9 +130,10 @@ rule integrate:
         """
         python IsoDecipher/scripts/integrate_samples.py \
             --samples {params.samples} \
-            --data_dir data/samples/Cheng \
+            --data_dir /Volumes/Lexar/Cheng \
             --iso_dir results/counts \
-            --suffix _isoform_count_expanded.csv \
+            --suffix _isoform_count_Cheng.csv \
+            --panel results/panel/panel_features_Cheng.csv \
             --out {output} \
             2> {log}
         """

@@ -26,6 +26,8 @@ def main():
     parser.add_argument("--iso_dir", required=True, help="Directory containing isoform CSVs")
     parser.add_argument('--suffix', default='_isoform_count.csv', help='Isoform count file suffix')
     parser.add_argument("--out", required=True, help="Path for output H5AD")
+    parser.add_argument("--panel", default=None,
+                        help="Path to panel_features.csv for iso.var metadata enrichment")
     args = parser.parse_args()
 
     exps = args.samples
@@ -117,6 +119,23 @@ def main():
 
     clean_names = [name[:-4] if name.endswith('_nan') else name for name in adata_final.var_names]
     adata_final.var_names = clean_names
+
+    # --- Join panel metadata into iso.var ---
+    if args.panel and os.path.exists(args.panel):
+        print(f"\n[integrate] Joining panel metadata from {args.panel}...")
+        panel = pd.read_csv(args.panel)
+        panel['feature_id'] = panel['gene'] + '_G' + panel['polyA_group'].astype(str)
+        panel_indexed = panel.set_index('feature_id')[
+            ['gene', 'rep_coord', 'avg_spliced_utr', 'utr_source', 'coord_spread']
+        ].copy()
+        panel_indexed = panel_indexed.rename(columns={'gene': 'gene_name'})
+        panel_indexed = panel_indexed[~panel_indexed.index.duplicated(keep='first')]
+        adata_final.var = adata_final.var.join(panel_indexed, how='left')
+        n_joined = adata_final.var['avg_spliced_utr'].notna().sum()
+        print(f"  Joined metadata for {n_joined:,} isoform features")
+    else:
+        if args.panel:
+            print(f"[WARN] Panel file not found: {args.panel} — skipping metadata join")
 
     n_gex = (adata_final.var['feature_types'] == 'Gene Expression').sum()
     n_iso = (adata_final.var['feature_types'] == 'Isoform').sum()

@@ -1,12 +1,10 @@
 # --- Project Data & Old Versions ---
 data/
-!data/gene_list.txt
 
 # --- Results ---
 results/*
 !results/figures/
 !results/figures/*
-!results/panel_features.csv
 
 # --- Bioinformatics Large Files ---
 *.bam

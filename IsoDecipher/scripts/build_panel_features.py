@@ -69,6 +69,26 @@ NON_CODING_BIOTYPES = {
 
 IG_WHITELIST = {"IGHM", "IGHG1", "IGHG2", "IGHG3", "IGHG4", "IGHA1", "IGHA2", "IGHE"}
 
+# Ensembl tags immunoglobulin and T-cell receptor variable/constant region
+# transcripts with IG_*/TR_* biotypes instead of "protein_coding", even
+# though these are bona fide coding transcripts with a real CDS and 3' UTR.
+# Without this, genes like IGHM/IGHG1-4/IGHA1-2/IGHE are misclassified as
+# non_coding and their avg_spliced_utr is silently set to 0.
+# Pseudogene variants (IG_*_pseudogene, TR_*_pseudogene) are intentionally
+# excluded — these lack functional ORFs and are correctly treated as non-coding.
+CODING_BIOTYPES = {
+    "protein_coding",
+    "IG_C_gene",   # immunoglobulin constant region (e.g. IGHM, IGHG1-4, IGHA1-2, IGHE)
+    "IG_V_gene",   # immunoglobulin variable region
+    "IG_D_gene",   # immunoglobulin diversity region
+    "IG_J_gene",   # immunoglobulin joining region
+    "IG_LV_gene",  # immunoglobulin long variable region (rare)
+    "TR_C_gene",   # T-cell receptor constant region
+    "TR_V_gene",
+    "TR_D_gene",
+    "TR_J_gene",
+}
+
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -79,7 +99,7 @@ def parse_args():
     parser.add_argument("--db",     help="Optional: specific path for gffutils DB")
     parser.add_argument("--out",    required=True)
     parser.add_argument("--custom_params", help="Custom tolerance TSV/CSV")
-    parser.add_argument("--tolerance", type=int, default=10)
+    parser.add_argument("--tolerance", type=int, default=125)
     parser.add_argument("--no-filter", action="store_true")
     parser.add_argument("--include-nmd", action="store_true",
                         help="Include NMD transcripts (coordinates only, no UTR)")
@@ -174,9 +194,9 @@ def collect_transcript_end(db, gene_list, skip_biotypes):
             else:
                 coord = tx.end if strand == "+" else tx.start
 
-            # UTR length — only computed for protein_coding
+            # UTR length — only computed for coding biotypes
             # Non-coding biotypes get None → excluded from avg_spliced_utr
-            is_protein_coding = (biotype == "protein_coding")
+            is_protein_coding = (biotype in CODING_BIOTYPES)
 
             genomic_utr_dist = None
             if is_protein_coding and cds:
@@ -221,21 +241,31 @@ def collect_transcript_end(db, gene_list, skip_biotypes):
     return gene_data
 
 
-def cluster_transcript_ends(transcript_data, gene_name, param_dict, default_tolerance=10):
+def cluster_transcript_ends(transcript_data, gene_name, param_dict, default_tolerance=125):
     tolerance  = param_dict.get(gene_name.upper(), default_tolerance)
     sorted_tx  = sorted(transcript_data, key=lambda x: x['coord'])
     if not sorted_tx:
         return []
 
-    clusters       = []
+    clusters        = []
     current_cluster = [sorted_tx[0]]
+
     for i in range(1, len(sorted_tx)):
+        # Consecutive gap-based merging:
+        # Compare each transcript to the PREVIOUS one (not the anchor)
+        # This correctly merges sites that form a continuous chain
+        # e.g. A=0, B=100bp, C=160bp with tolerance=125bp:
+        #   A→B: 100bp < 125bp → merge A+B
+        #   B→C: 60bp  < 125bp → merge B+C → A+B+C merged
+        # This matches IGV pileup structure where nearby sites
+        # form one continuous read peak
         dist = sorted_tx[i]["coord"] - sorted_tx[i-1]["coord"]
         if dist <= tolerance:
             current_cluster.append(sorted_tx[i])
         else:
             clusters.append(current_cluster)
             current_cluster = [sorted_tx[i]]
+
     clusters.append(current_cluster)
 
     if gene_name.upper() in param_dict:
@@ -249,14 +279,15 @@ def get_utr_source(cluster):
     Classify the UTR data source for a cluster of transcripts.
 
     Returns:
-        'protein_coding' — all transcripts are protein_coding
-        'mixed'          — mix of protein_coding + non-coding
-        'non_coding'     — no protein_coding transcripts (retained_intron, NMD, etc.)
+        'protein_coding' — all transcripts are coding (protein_coding or IG_*/TR_* gene biotypes)
+        'mixed'          — mix of coding + non-coding
+        'non_coding'     — no coding transcripts (retained_intron, NMD, lncRNA, pseudogenes, etc.)
     """
     biotypes = set(tx['biotype'] for tx in cluster)
-    if biotypes == {"protein_coding"}:
+    coding_present = biotypes & CODING_BIOTYPES
+    if biotypes <= CODING_BIOTYPES:
         return "protein_coding"
-    elif "protein_coding" in biotypes:
+    elif coding_present:
         return "mixed"
     else:
         return "non_coding"
@@ -283,7 +314,7 @@ def filter_panel_features(df_panel):
             is_zero_utr      = row['avg_spliced_utr'] == 0
             is_singleton     = row['num_transcripts'] == 1
             is_dominant      = (idx == dominant_idx)
-            is_protein_coding = row['utr_source'] == 'protein_coding'
+            is_protein_coding = row['utr_source'] == 'protein_coding'  # now also covers IG_*/TR_* coding biotypes
 
             if is_dominant:
                 filtered_rows.append(row)

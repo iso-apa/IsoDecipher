@@ -8,12 +8,20 @@
 # See the LICENSE file in the project root for more details.
 # ==============================================================================
 
+import os
+
+# Default lookup bundled with IsoDecipher
+_SCRIPT_DIR    = os.path.dirname(os.path.abspath(__file__))
+_DEFAULT_LOOKUP = os.path.join(
+    _SCRIPT_DIR, '..', 'reference',
+    'insert_size_lookup_10x_3p_v3.json'
+)
+
 import pysam
 import pandas as pd
 import gzip
 from collections import defaultdict
 import argparse
-import os
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Assign reads to isoforms per sample")
@@ -30,9 +38,20 @@ def parse_args():
                         help="Comma-separated chromosomes to include. "
                              "Default: standard chr1-22,chrX,chrY,chrM only. "
                              "Use 'all' to include all contigs.")
-    parser.add_argument("--window", type=int, default=350,
+    parser.add_argument("--window", type=int, default=420,
                         help="Upstream read scatter window around PA site. "
-                             "Default: 350 (based on 10x max insert 600bp - backbone 200bp - read2 90bp + buffer)")
+                             "Default: 420bp (P95 of empirical insert size distribution + buffer). "
+                             "Previously 350bp.")
+    parser.add_argument("--insert-size-lookup", default=_DEFAULT_LOOKUP,
+                        help="KDE lookup table for probabilistic read assignment. "
+                             "Default: bundled 10x 3' v3 reference "
+                             "(IsoDecipher/reference/insert_size_lookup_10x_3p_v3.json). "
+                             "Generate custom lookup with validate_insert_size.py "
+                             "if using a different library prep. "
+                             "Pass 'none' to use shortest-distance assignment instead.")
+    parser.add_argument("--debug-gene", default=None,
+                        help="Gene name to output per-read assignment details for IGV validation. "
+                             "Outputs a TSV with read coordinates, site assigned, offset, and score.")
     return parser.parse_args()
 
 
@@ -145,12 +164,67 @@ def main():
         )
 
     bam    = pysam.AlignmentFile(args.bam, "rb")
-    
+
+    # Load KDE insert size lookup for probabilistic assignment
+    prob_array = None
+    lookup_path = args.insert_size_lookup
+    if lookup_path and lookup_path.lower() != 'none':
+        if os.path.exists(lookup_path):
+            import json
+            import numpy as np
+            lookup    = json.load(open(lookup_path))
+            prob_array = np.array(lookup['probs'])
+            print(f"[assign] Probabilistic assignment: KDE lookup loaded")
+            print(f"         {lookup_path}")
+            print(f"         median_offset={lookup.get('offset_mu', 'N/A')}bp | "
+                  f"window={args.window}bp")
+        else:
+            print(f"[assign] WARNING: lookup file not found: {lookup_path}")
+            print(f"         Falling back to shortest-distance assignment.")
+            print(f"         Run validate_insert_size.py to generate a lookup table.")
+    else:
+        print(f"[assign] Shortest-distance assignment (--insert-size-lookup none).")
+
+    def score_read(dist):
+        """
+        Return assignment score for a read at given offset distance.
+        Higher score = better assignment.
+        KDE mode: probability from empirical distribution
+        Fallback:  negative distance (closer = higher score)
+        """
+        if prob_array is not None:
+            if dist < 0 or dist > len(prob_array) - 1:
+                return 0.0
+            return float(prob_array[int(dist)])
+        else:
+            return -dist  # negative distance: closer = less negative = higher
+
     # Use dynamic window from arguments
     window = args.window
 
-    counts        = defaultdict(set)
-    umi_best_match = {}
+    # Debug mode: if debug-gene specified, only process that gene's chromosome
+    debug_gene = args.debug_gene
+    if debug_gene:
+        gene_rows = panel[panel['gene'] == debug_gene]
+        if gene_rows.empty:
+            print(f"[debug] ERROR: gene '{debug_gene}' not found in panel")
+            return
+        debug_chrom = gene_rows['chrom'].iloc[0]
+        # normalize chrom prefix
+        if not str(debug_chrom).startswith('chr'):
+            debug_chrom = f'chr{debug_chrom}'
+        print(f"[debug] Gene {debug_gene} → only processing {debug_chrom}")
+        # filter targets to only this chrom
+        targets = {k: v for k, v in targets.items()
+                   if (k.startswith('chr') and k == debug_chrom) or
+                      (not k.startswith('chr') and f'chr{k}' == debug_chrom)}
+
+    debug_rows   = []
+    umi_debug_info = {}
+
+    # Global tracker for the final output matrix
+    global_soft_counts = defaultdict(float)  # (cb, feature) -> fractional count
+    global_umi_count = 0                     # Total UMIs processed
 
     for chrom, sites in targets.items():
         current_chrom = chrom
@@ -162,7 +236,10 @@ def main():
                 continue
 
         print(f"Current Chromosome: {current_chrom} | "
-              f"Total unique UMIs captured so far: {len(umi_best_match)}")
+              f"Features processed so far: {len(global_soft_counts)}")
+
+        # Initialize tracking dict locally per chromosome to prevent memory bloat
+        umi_best_match = {}  # (cb, ub) -> {feature: score, ...}
 
         for site in sites:
             # Fetch upstream only — downstream reads belong to neighbor genes
@@ -192,24 +269,86 @@ def main():
                 if dist <= window:
                     ub      = read.get_tag("UB")
                     umi_key = (cb, ub)
-                    label   = site['label']
-                    if not label or label == 'N/A' or str(label) == 'nan':
-                        feature = f"{site['gene']}_G{site['group']}"
-                    else:
-                        feature = f"{site['gene']}_G{site['group']}_{label}"
+                    # user_label (e.g. Secreted/Membrane for IGH genes) is stored
+                    # in panel CSV as metadata only — NOT embedded in feature name.
+                    # Keeping feature names as Gene_G0 / Gene_G1 ensures that
+                    # integrate_samples.py's panel join (keyed on gene + '_G' + group)
+                    # correctly matches IGH features and populates utr_source /
+                    # avg_spliced_utr from the panel CSV.
+                    feature = f"{site['gene']}_G{site['group']}"
 
-                    if umi_key not in umi_best_match or dist < umi_best_match[umi_key][1]:
-                        umi_best_match[umi_key] = (feature, dist)
+                    s = score_read(dist)
 
-    for (cb, ub), (feature, dist) in umi_best_match.items():
-        counts[(cb, feature)].add(ub)
+                    # Soft assignment: accumulate scores for ALL sites
+                    # each UMI -> dict of {feature: score}
+                    if umi_key not in umi_best_match:
+                        umi_best_match[umi_key] = {}
+                    umi_best_match[umi_key][feature] = max(
+                        umi_best_match[umi_key].get(feature, 0), s
+                    )
+
+                    # Debug tracking (keep highest-score site for display)
+                    if debug_gene and site['gene'] == debug_gene:
+                        prev = umi_debug_info.get(umi_key, {})
+                        if s > prev.get('score', -1):
+                            umi_debug_info[umi_key] = {
+                                'read_id':    read.query_name,
+                                'cb':         cb,
+                                'ub':         ub,
+                                'chrom':      current_chrom,
+                                'read_start': read.reference_start,
+                                'read_end':   read.reference_end,
+                                'read_3p':    read_3_prime,
+                                'site':       feature,
+                                'site_pos':   site['pos'],
+                                'offset_bp':  dist,
+                                'score':      round(s, 6),
+                                'method':     'KDE' if prob_array is not None else 'shortest_dist',
+                                'strand':     site['strand'],
+                            }
+
+        # Soft assignment for the current chromosome: normalize scores per UMI
+        for umi_key, site_scores in umi_best_match.items():
+            cb = umi_key[0]
+            total_score = sum(site_scores.values())
+            if total_score <= 0:
+                continue
+            for feature, score in site_scores.items():
+                global_soft_counts[(cb, feature)] += score / total_score
+
+        # Track total UMIs and explicitly flush memory for this chromosome
+        global_umi_count += len(umi_best_match)
+        umi_best_match.clear()
+        import gc
+        gc.collect()
+
+    # Debug output
+    if debug_gene and umi_debug_info:
+        debug_path = args.out.replace('.csv', f'_debug_{debug_gene}.tsv')
+        debug_df   = pd.DataFrame(list(umi_debug_info.values()))
+        debug_df   = debug_df.sort_values('offset_bp')
+        debug_df.to_csv(debug_path, sep='\t', index=False)
+        print(f"\n[debug] {debug_gene} assignment details → {debug_path}")
+        print(f"[debug] {len(debug_df)} UMIs assigned to {debug_gene}")
+        print(f"\n[debug] Site distribution:")
+        print(debug_df['site'].value_counts().to_string())
+        print(f"\n[debug] Offset distribution per site:")
+        print(debug_df.groupby('site')['offset_bp'].describe().round(1).to_string())
+        print(f"\n[debug] Sample reads (sorted by offset):")
+        cols = ['read_id','chrom','read_start','read_end','read_3p',
+                'site','site_pos','offset_bp','score','method']
+        print(debug_df[cols].head(20).to_string(index=False))
+        print(f"\n[debug] IGV coordinates for top reads:")
+        for _, row in debug_df.head(10).iterrows():
+            igv = f"{row['chrom']}:{row['read_start']}-{row['read_end']}"
+            print(f"  {igv:<35} offset={row['offset_bp']:>4}bp  → {row['site']}")
 
     results = []
-    for (cb, feature), umis in counts.items():
+    for (cb, feature), frac_count in global_soft_counts.items():
         results.append({
             'cell_barcode': cb,
             'feature':      feature,
-            'count':        len(umis),
+            'count':        round(frac_count, 4),  # 4 decimal places
         })
 
     if results:
@@ -220,7 +359,7 @@ def main():
         print(f"✅ Saved: {args.out}")
         print(f"   Cells:    {matrix.shape[0]:,}")
         print(f"   Features: {matrix.shape[1]:,}")
-        print(f"   UMIs:     {int(matrix.values.sum()):,}")
+        print(f"   UMIs:     {global_umi_count:,} (soft-assigned → fractional counts)")
     else:
         print(f"⚠️  No reads assigned for {args.bam}")
 

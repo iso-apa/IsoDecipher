@@ -71,20 +71,49 @@ CD59 has 32 annotated transcripts across 14 polyA groups. IsoDecipher consolidat
 
 | Feature | scAPA | Sierra | MAAPER | IsoDecipher |
 |---------|-------|--------|--------|-------------|
-| Reference | De novo | De novo | GTF | GTF |
-| Output | Peak counts | Peak counts | Site probability | Count matrix |
-| Feature names | Coordinates | Coordinates | Gene+Site | Gene+Group |
-| Noise filter | ❌ | ❌ | Partial | ✅ |
-| Biotype filter | ❌ | ❌ | ❌ | ✅ |
-| NMD option | ❌ | ❌ | ❌ | ✅ |
-| Retained intron option | ❌ | ❌ | ❌ | ✅ |
-| UTR source classification | ❌ | ❌ | ❌ | ✅ |
-| Transcript consolidation | ❌ | ❌ | ❌ | ✅ |
-| Scanpy ready | ❌ | ❌ | ❌ | ✅ |
-| IG isoform logic | ❌ | ❌ | ❌ | ✅ |
-| Metric selection | Fixed | Fixed | Fixed | Adaptive (PUI/Entropy) |
+| **Environment** | R | R | R | Python |
+| **Data type** | scRNA-seq | scRNA-seq | Bulk (10x compatible) | scRNA-seq |
+| **Reference** | De novo | De novo | GTF + PolyA_DB | GTF |
+| **Output format** | Peak counts | Peak counts | Site probability | Count matrix |
+| **Feature names** | Coordinates | Coordinates | Gene+Site | Gene+Group |
+| **Internal priming filter** | ❌ | ❌ | ✅ PAS-anchored¹ | ✅ GTF-anchored² |
+| **Biotype filter** | ❌ | ❌ | ❌ | ✅ protein_coding only |
+| **NMD option** | ❌ | ❌ | ❌ | ✅ excluded by default |
+| **Retained intron option** | ❌ | ❌ | ❌ | ✅ opt-in |
+| **UTR source classification** | ❌ | ❌ | ❌ | ✅ 3-tier label |
+| **Transcript consolidation** | ❌ | ❌ | ❌ | ✅ ±10bp grouping |
+| **Probabilistic read assignment** | ❌ | ❌ | ✅ KDE (bulk-tuned) | ✅ KDE (10x-tuned) |
+| **Scanpy ready** | ❌ | ❌ | ❌ | ✅ |
+| **IG isoform logic** | ❌ | ❌ | ❌ | ✅ |
+| **Metric selection** | Fixed | Fixed | Fixed | Adaptive (PUI/Entropy) |
+
+> ¹ MAAPER anchors reads to PolyA_DB known PAS via probabilistic assignment. Novel PAS predictions for unassigned reads receive no additional A-rich context validation.
+> ² IsoDecipher anchors to GTF-annotated 3' ends only. Novel site discovery is handled by IsoCAPE (dark genome module).
+
+**Transcriptome-aware Filtering — IsoDecipher's unique advantage:**
+
+Other tools play a mathematical game: find peaks in the data, filter by A-rich sequence downstream. This works for bulk data but breaks down in sparse single-cell data where noise peaks easily pass coverage thresholds.
+
+IsoDecipher takes a fundamentally different approach — it never generates noise peaks in the first place:
+
+- **Internal priming noise filter**: scAPA and Sierra do no internal priming filtering, accepting any peak above a coverage threshold. MAAPER partially addresses this by anchoring to PolyA_DB known PAS, but also outputs novel predicted PAS for unassigned reads — these receive no A-rich validation. IsoDecipher eliminates the problem by design: the panel is built from GTF-annotated transcript 3' ends only. A site must exist in the GTF to enter the panel. Novel and unannotated polyA site discovery is the domain of **IsoCAPE** (dark genome: cryptic exons, Alu-driven events, antisense transcription) — a separate module with its own validation logic.
+
+- **Biotype filter**: only `protein_coding` transcripts contribute to UTR coordinates. lncRNA, pseudogene, and other biotype 3' ends are excluded — their coordinates would contaminate UTR length calculations with biologically meaningless values.
+
+- **NMD option**: Nonsense-mediated decay transcripts are excluded by default. NMD transcripts are actively degraded and show near-zero expression in normal cells — including their 3' end coordinates as panel features would add noise features that confound APA trajectory analysis. Use `--include-nmd` in cancer datasets where the NMD pathway is frequently dysregulated.
+
+- **UTR source classification**: every panel feature carries a `utr_source` label (`protein_coding`, `mixed`, `non_coding`) so downstream analysis can filter appropriately. No other tool provides this metadata.
 
 IsoDecipher is the only tool that combines GTF-anchored noise suppression, biotype-aware filtering, and transcript consolidation into a scanpy-compatible count matrix — enabling isoform-resolved single-cell analysis without post-processing.
+
+**Probabilistic read assignment (KDE):** When a read falls within the fetch window of multiple nearby polyA sites, assignment accuracy matters — especially when sites are separated by less than the insert size scatter range (~310bp).
+
+*How tools differ:*
+- **scAPA / Sierra**: no probabilistic model. All reads within a peak window are counted toward that peak, regardless of distance to the PAS.
+- **MAAPER**: uses Gaussian KDE to learn the read-PAS distance distribution from single-PAS genes (identified via PolyA_DB). Designed for bulk 3' end sequencing (QuantSeq FWD); can be applied to 10x data but is not optimized for sparse single-cell matrices or CB/UMI deduplication. Notably, MAAPER found a bimodal distribution in QuantSeq data (~190nt and ~250nt peaks), where the second peak comes from short genes (≤400nt) due to physical fragmentation constraints — they exclude short genes and use only the first mode.
+- **IsoDecipher**: same KDE approach, but trained directly from your own BAM using canonical polyA sites from the panel — no external database required. Optimized for 10x 3' scRNA-seq (enzymatic fragmentation produces a unimodal right-skewed distribution without the bimodal artifact). KS test on exp105: KDE=0.014 vs Normal=0.073 vs Gamma=0.070. Window expanded to 420bp (P95=402bp) vs the conventional 350bp assumption.
+
+Users can regenerate the KDE lookup from their own BAM using `validate_insert_size.py` — recommended for non-10x libraries or different library versions (v2 vs v3).
 
 **Why transcript consolidation matters:** For genes with multiple transcripts sharing nearby cleavage sites (e.g., CD59 G8 consolidates 7 transcripts within ±10bp), de novo tools fragment reads across low-confidence peaks and MAAPER assigns separate probabilities per site — both approaches dilute signal below detection threshold. IsoDecipher pools these reads into a single group, recovering isoform dynamics that would otherwise be lost.
 
@@ -254,11 +283,11 @@ python IsoDecipher/scripts/assign_reads.py \
     --bam data/samples/exp93/possorted_genome_bam.bam \
     --panel results/panel_features.csv \
     --barcodes data/samples/exp93/filtered_feature_bc_matrix/barcodes.tsv.gz \
-    --out results/counts/exp93_isoform_count.csv
-    --window 350 
+    --out results/counts/exp93_isoform_count.csv \
+    --insert-size-lookup reference/insert_size_lookup_10x_3p_v3.json
 ```
 
-**Smart capture window**: The --window parameter (default: 350) defines the strict upstream scatter boundary around the PolyA site. This 350bp limit is custom-calibrated for 10x Genomics 3' GEX library anatomy (accounting for max insert size minus backbone and Read 2 lengths), ensuring that reads are precisely assigned to the correct isoform without bleeding into downstream neighboring genes.
+**Smart capture window**: The `--window` parameter (default: 420bp) defines the upstream scatter boundary around the polyA site. This window is empirically calibrated from 10x Genomics 3' v3 library data: insert size distribution measured across 32,906 reads from canonical polyA sites yields a median offset of 155bp and P95 of 402bp — meaning 95% of genuine reads fall within 402bp of their true polyA site. The 420bp default (P95 + buffer) ensures near-complete read capture while preventing bleed-in from neighboring downstream genes. A KDE lookup table (`reference/insert_size_lookup_10x_3p_v3.json`) models the full empirical distribution for probabilistic site assignment. Users on non-10x libraries or different library versions can regenerate both the window recommendation and the KDE lookup using `validate_insert_size.py`.
 
 **Flexible barcode format**: --barcodes accepts TSV, CSV, or gzipped files. The barcode column is auto-detected — both single-column (BARCODE-1) and two-column formats (GRCh38,BARCODE-1) from Cell Ranger are handled automatically. Override with --barcode-col and --barcode-sep if needed.
 
@@ -319,7 +348,8 @@ GTF annotation + gene panel (391 genes, or expanded HVG+high-expr)
             │
             ▼
     IsoDecipher Read Assignment
-    (strand-aware, UMI-deduplicated, upstream 350bp window)
+    (strand-aware, UMI-deduplicated, upstream 420bp window)
+    (KDE probabilistic assignment — empirical insert size distribution)
     (flexible barcode format: TSV/CSV/gz, auto-detected)
             │
             ▼
@@ -350,8 +380,11 @@ IsoDecipher/
 │   │   ├── build_panel_features.py   # Step 1: Build polyA site panel from GTF
 │   │   ├── assign_reads.py           # Step 2: Assign BAM reads to panel features
 │   │   ├── integrate_samples.py      # Step 3: Merge samples into AnnData
+│   │   ├── validate_insert_size.py   # Utility: validate insert size distribution
 │   │   └── generate_metadata.py      # Utility: sample metadata generation
 │   └── __init__.py
+├── reference/
+│   └── insert_size_lookup_10x_3p_v3.json  # KDE lookup for probabilistic assignment
 ├── notebooks/
 │   └── 01_quickstart.ipynb           # PUI/Entropy computation + basic plots
 ├── docs/
