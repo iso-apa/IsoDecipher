@@ -1,0 +1,48 @@
+# ==============================================================================
+# IsoDecipher config — Lymphoma batch (Raji + Hodgkin + exp97)
+# ==============================================================================
+
+# ── Samples ───────────────────────────────────────────────────
+samples:
+  - raji
+  - hodgkin
+  - exp97
+
+# ── Batch output directory ────────────────────────────────────
+# Counts, logs, batch panel, and h5ad all write here.
+# Source data (BAM, barcodes) lives in per_sample paths below.
+data_dir: "/Volumes/Lexar/lymphoma_batch"
+
+# ── Reference ─────────────────────────────────────────────────
+global_panel: "/Volumes/Lexar/reference/hg38/panel_features_global_v1.2.csv"
+indices_pkl:  "/Volumes/Lexar/reference/hg38/hg38_iso_indices_v2.pkl"
+
+# ── Batch-level outputs (relative to data_dir/) ───────────────
+batch_panel: "results/panel_lymphoma_batch.csv"
+output_h5ad: "results/lymphoma_v2.h5ad"
+
+# ── Per-sample source paths ───────────────────────────────────
+per_sample:
+  raji:
+    data_dir: "/Volumes/Lexar/Raji/Raji"
+    bam: "SC3_v3_NextGem_DI_CellPlex_Jurkat_Raji_10K_Raji_count_sample_alignments.bam"
+    matrix_dir: "sample_feature_bc_matrix"
+    insert_size_lookup: "/Volumes/Lexar/Raji/Raji/results/insert_size/raji_insert_size_panel_lookup.json"
+    h5: "/Volumes/Lexar/Raji/Raji/filtered_feature_bc_matrix.h5"
+  hodgkin:
+    data_dir: "/Volumes/Lexar/Hodgkin/Hodgkin"
+    bam: "Parent_NGSC3_DI_HodgkinsLymphoma_possorted_genome_bam.bam"
+    matrix_dir: "filtered_feature_bc_matrix"
+    insert_size_lookup: "/Volumes/Lexar/Hodgkin/Hodgkin/results/insert_size/hodgkin_insert_size_panel_lookup.json"
+    h5: "/Volumes/Lexar/Hodgkin/Hodgkin/filtered_feature_bc_matrix.h5"
+  exp97:
+    data_dir: "/Volumes/Lexar/Cheng/exp97"
+    bam: "possorted_genome_bam.bam"
+    matrix_dir: "filtered_feature_bc_matrix"
+    insert_size_lookup: "/Volumes/Lexar/Cheng/exp97/results/insert_size/exp97_insert_size_panel_lookup.json"
+    h5: "/Volumes/Lexar/Cheng/exp97/filtered_feature_bc_matrix.h5"
+
+# ── validate_insert_size params (skipped — pre-computed lookups above) ────────
+insert_size:
+  n_reads: 1000000
+  n_sites: 200

@@ -1,0 +1,30 @@
+# ==============================================================================
+# IsoDecipher config — Cheng B cell dataset (exp97/105/106)
+# ==============================================================================
+
+# ── Samples ───────────────────────────────────────────────────
+samples:
+  - exp97
+  - exp105
+  - exp106
+
+# ── Data directory ────────────────────────────────────────────
+# All sample subdirectories live under data_dir/
+# e.g. /Volumes/Lexar/Cheng/exp97/
+data_dir: "/Volumes/Lexar/Cheng"
+
+# ── Reference ─────────────────────────────────────────────────
+global_panel: "/Volumes/Lexar/reference/hg38/panel_features_global_v1.2.csv"
+
+# ── Per-sample file names (relative to data_dir/{sample}/) ───
+bam:        "possorted_genome_bam.bam"
+matrix_dir: "filtered_feature_bc_matrix"
+
+# ── Batch-level outputs (relative to data_dir/) ───────────────
+batch_panel: "results/panel_cheng_batch.csv"
+output_h5ad: "results/cheng_bcell_v1.2.h5ad"
+
+# ── validate_insert_size params ───────────────────────────────
+insert_size:
+  n_reads: 1000000
+  n_sites: 200

@@ -1,0 +1,27 @@
+# ==============================================================================
+# IsoDecipher config — IDC (Invasive Ductal Carcinoma) dataset
+# ==============================================================================
+
+# ── Samples ───────────────────────────────────────────────────
+samples:
+  - idc_tumor
+  - idc_normal
+
+# ── Data directory ────────────────────────────────────────────
+data_dir: "/Volumes/Lexar/IDC"
+
+# ── Reference ─────────────────────────────────────────────────
+global_panel: "/Volumes/Lexar/reference/hg38/panel_features_global_v1.2.csv"
+
+# ── Per-sample file names (relative to data_dir/{sample}/) ───
+bam:        "possorted_genome_bam.bam"
+matrix_dir: "filtered_feature_bc_matrix"
+
+# ── Batch-level outputs (relative to data_dir/) ───────────────
+batch_panel: "results/panel_idc_batch.csv"
+output_h5ad: "results/idc_v1.0.h5ad"
+
+# ── validate_insert_size params ───────────────────────────────
+insert_size:
+  n_reads: 1000000
+  n_sites: 200
